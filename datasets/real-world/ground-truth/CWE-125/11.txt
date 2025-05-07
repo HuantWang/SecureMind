@@ -1,0 +1,2 @@
+When using the built-in extract32(b, start), if the start index provided has for side effect to update b, the byte array to extract 32 bytes from, 
+it could be that some dirty memory is read and returned by extract32.

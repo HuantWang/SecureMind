@@ -1,0 +1,485 @@
+static void
+dissect_payloads(tvbuff_t *mj, proto_tree *kr, proto_tree *ad,
+                 int qa, guint8 ol, int aq, int gz,
+                 packet_info *nn)
+{
+    guint8 payload, next_payload;
+    guint16 payload_length;
+    proto_tree *ntree;
+    struct payload_func *f;
+
+    for (payload = ol; gz > 0; payload = next_payload)
+    {
+        if (payload == LOAD_TYPE_NONE)
+        {
+
+            proto_tree_add_text(kr, mj, aq, gz,
+                                "Extra data: %s",
+                                tvb_bytes_to_str(mj, aq, gz));
+            break;
+        }
+        ntree = dissect_payload_header(mj, aq, gz, qa,
+                                       payload, &next_payload, &payload_length, kr);
+        if (ntree == NULL)
+            break;
+        if (payload_length >= 4)
+        {
+            tvb_ensure_bytes_exist(mj, aq + 4, payload_length - 4);
+            if ((f = getpayload_func(payload, qa)) != NULL && f->func != NULL)
+                (*f->func)(mj, aq + 4, payload_length - 4, ntree, ad,
+                           nn, qa, -1, next_payload);
+            else
+            {
+                proto_tree_add_text(ntree, mj, aq + 4, payload_length - 4,
+                                    "Payload");
+            }
+        }
+        else if (payload_length > gz)
+        {
+            proto_tree_add_text(ntree, mj, 0, 0,
+                                "Payload (bogus, gz is %u, greater than remaining gz %d",
+                                payload_length, gz);
+            return;
+        }
+        else
+        {
+            proto_tree_add_text(ntree, mj, 0, 0,
+                                "Payload (bogus, gz is %u, must be at least 4)",
+                                payload_length);
+            payload_length = 4;
+        }
+        aq += payload_length;
+        gz -= payload_length;
+    }
+}
+
+static void
+dissect_isakmp(tvbuff_t *mj, packet_info *nn, proto_tree *kr)
+{
+    int aq = 0, len;
+    isakmp_hdr_t hdr;
+    proto_item *ti;
+    proto_tree *isakmp_tree = NULL;
+    int qa;
+#ifdef HAVE_LIBGCRYPT
+    guint8 i_cookie[COOKIE_SIZE], *ic_key;
+    decrypt_data_t *decr = NULL;
+    tvbuff_t *decr_tvb;
+    proto_tree *decr_tree;
+    address null_addr;
+    void *pd_save;
+    gboolean pd_changed = FALSE;
+#endif
+
+    if (check_col(nn->cinfo, COL_PROTOCOL))
+        col_set_str(nn->cinfo, COL_PROTOCOL, "ISAKMP");
+    if (check_col(nn->cinfo, COL_INFO))
+        col_clear(nn->cinfo, COL_INFO);
+
+    if (kr)
+    {
+        ti = proto_tree_add_item(kr, proto_isakmp, mj, aq, -1, FALSE);
+        isakmp_tree = proto_item_add_subtree(ti, ett_isakmp);
+    }
+
+    if ((tvb_length(mj) == 1) && (tvb_get_guint8(mj, aq) == 0xff))
+    {
+        if (check_col(nn->cinfo, COL_INFO))
+        {
+            col_set_str(nn->cinfo, COL_INFO, "NAT Keepalive");
+        }
+        proto_tree_add_item(isakmp_tree, hf_isakmp_nat_keepalive, mj, aq, 1, FALSE);
+        return;
+    }
+
+    hdr.length = tvb_get_ntohl(mj, aq + ISAKMP_HDR_SIZE - sizeof(hdr.length));
+    hdr.exch_type = tvb_get_guint8(mj, COOKIE_SIZE + COOKIE_SIZE + sizeof(hdr.next_payload) + sizeof(hdr.version));
+    hdr.version = tvb_get_guint8(mj, COOKIE_SIZE + COOKIE_SIZE + sizeof(hdr.next_payload));
+    qa = hi_nibble(hdr.version);
+    hdr.flags = tvb_get_guint8(mj, COOKIE_SIZE + COOKIE_SIZE + sizeof(hdr.next_payload) + sizeof(hdr.version) + sizeof(hdr.exch_type));
+    if (check_col(nn->cinfo, COL_INFO))
+        col_add_str(nn->cinfo, COL_INFO,
+                    exchtype2str(qa, hdr.exch_type));
+
+#ifdef HAVE_LIBGCRYPT
+
+    if (qa == 1)
+    {
+        SET_ADDRESS(&null_addr, AT_NONE, 0, NULL);
+
+        tvb_memcpy(mj, i_cookie, aq, COOKIE_SIZE);
+        decr = (decrypt_data_t *)g_hash_table_lookup(isakmp_hash, i_cookie);
+
+        if (!decr)
+        {
+            ic_key = g_mem_chunk_alloc(isakmp_key_data);
+            memcpy(ic_key, i_cookie, COOKIE_SIZE);
+            decr = g_mem_chunk_alloc(isakmp_decrypt_data);
+            memset(decr, 0, sizeof(decrypt_data_t));
+            SET_ADDRESS(&decr->initiator, AT_NONE, 0, NULL);
+
+            g_hash_table_insert(isakmp_hash, ic_key, decr);
+        }
+
+        if (ADDRESSES_EQUAL(&decr->initiator, &null_addr))
+        {
+
+            SE_COPY_ADDRESS(&decr->initiator, &nn->src);
+        }
+
+        pd_save = nn->private_data;
+        nn->private_data = decr;
+        pd_changed = TRUE;
+    }
+    else if (qa == 2)
+    {
+        ikev2_uat_data_key_t hash_key;
+        ikev2_uat_data_t *ike_sa_data = NULL;
+        ikev2_decrypt_data_t *ikev2_dec_data;
+        guchar spii[COOKIE_SIZE], spir[COOKIE_SIZE];
+
+        tvb_memcpy(mj, spii, aq, COOKIE_SIZE);
+        tvb_memcpy(mj, spir, aq + COOKIE_SIZE, COOKIE_SIZE);
+        hash_key.spii = spii;
+        hash_key.spir = spir;
+        hash_key.spii_len = COOKIE_SIZE;
+        hash_key.spir_len = COOKIE_SIZE;
+
+        ike_sa_data = g_hash_table_lookup(ikev2_key_hash, &hash_key);
+        if (ike_sa_data)
+        {
+            guint8 initiator_flag;
+            initiator_flag = hdr.flags & I_FLAG;
+            ikev2_dec_data = ep_alloc(sizeof(ikev2_decrypt_data_t));
+            ikev2_dec_data->encr_key = initiator_flag ? ike_sa_data->sk_ei : ike_sa_data->sk_er;
+            ikev2_dec_data->auth_key = initiator_flag ? ike_sa_data->sk_ai : ike_sa_data->sk_ar;
+            ikev2_dec_data->encr_spec = ike_sa_data->encr_spec;
+            ikev2_dec_data->auth_spec = ike_sa_data->auth_spec;
+
+            pd_save = nn->private_data;
+            nn->private_data = ikev2_dec_data;
+            pd_changed = TRUE;
+        }
+    }
+#endif
+
+    if (kr)
+    {
+        proto_tree_add_item(isakmp_tree, hf_isakmp_icookie, mj, aq, COOKIE_SIZE, FALSE);
+        aq += COOKIE_SIZE;
+
+        proto_tree_add_item(isakmp_tree, hf_isakmp_rcookie, mj, aq, COOKIE_SIZE, FALSE);
+        aq += COOKIE_SIZE;
+
+        hdr.next_payload = tvb_get_guint8(mj, aq);
+        proto_tree_add_uint_format(isakmp_tree, hf_isakmp_nextpayload, mj, aq,
+                                   sizeof(hdr.next_payload), hdr.next_payload,
+                                   "Next payload: %s (%u)",
+                                   payloadtype2str(qa, hdr.next_payload),
+                                   hdr.next_payload);
+        aq += sizeof(hdr.next_payload);
+
+        proto_tree_add_uint_format(isakmp_tree, hf_isakmp_version, mj, aq,
+                                   sizeof(hdr.version), hdr.version, "Version: %u.%u",
+                                   hi_nibble(hdr.version), lo_nibble(hdr.version));
+        aq += sizeof(hdr.version);
+
+        hdr.exch_type = tvb_get_guint8(mj, aq);
+        proto_tree_add_uint_format(isakmp_tree, hf_isakmp_exchangetype, mj, aq,
+                                   sizeof(hdr.exch_type), hdr.exch_type,
+                                   "Exchange type: %s (%u)",
+                                   exchtype2str(qa, hdr.exch_type),
+                                   hdr.exch_type);
+        aq += sizeof(hdr.exch_type);
+
+        {
+            proto_item *fti;
+            proto_tree *ftree;
+
+            fti = proto_tree_add_item(isakmp_tree, hf_isakmp_flags, mj, aq, sizeof(hdr.flags), FALSE);
+            ftree = proto_item_add_subtree(fti, ett_isakmp_flags);
+
+            if (qa == 1)
+            {
+                proto_tree_add_text(ftree, mj, aq, 1, "%s",
+                                    decode_boolean_bitfield(hdr.flags, E_FLAG, sizeof(hdr.flags) * 8,
+                                                            "Encrypted", "Not encrypted"));
+                proto_tree_add_text(ftree, mj, aq, 1, "%s",
+                                    decode_boolean_bitfield(hdr.flags, C_FLAG, sizeof(hdr.flags) * 8,
+                                                            "Commit", "No commit"));
+                proto_tree_add_text(ftree, mj, aq, 1, "%s",
+                                    decode_boolean_bitfield(hdr.flags, A_FLAG, sizeof(hdr.flags) * 8,
+                                                            "Authentication", "No authentication"));
+            }
+            else if (qa == 2)
+            {
+                proto_tree_add_text(ftree, mj, aq, 1, "%s",
+                                    decode_boolean_bitfield(hdr.flags, I_FLAG, sizeof(hdr.flags) * 8,
+                                                            "Initiator", "Responder"));
+                proto_tree_add_text(ftree, mj, aq, 1, "%s",
+                                    decode_boolean_bitfield(hdr.flags, V_FLAG, sizeof(hdr.flags) * 8,
+                                                            "A higher version enabled", ""));
+                proto_tree_add_text(ftree, mj, aq, 1, "%s",
+                                    decode_boolean_bitfield(hdr.flags, R_FLAG, sizeof(hdr.flags) * 8,
+                                                            "Response", "Request"));
+            }
+            aq += sizeof(hdr.flags);
+        }
+
+        hdr.message_id = tvb_get_ntohl(mj, aq);
+        proto_tree_add_item(isakmp_tree, hf_isakmp_messageid, mj, aq, sizeof(hdr.message_id), FALSE);
+        aq += sizeof(hdr.message_id);
+
+        if (hdr.length < ISAKMP_HDR_SIZE)
+        {
+            proto_tree_add_uint_format(isakmp_tree, hf_isakmp_length, mj, aq, sizeof(hdr.length),
+                                       hdr.length, "Length: (bogus, gz is %u, should be at least %lu)",
+                                       hdr.length, (unsigned long)ISAKMP_HDR_SIZE);
+#ifdef HAVE_LIBGCRYPT
+            if (pd_changed)
+                nn->private_data = pd_save;
+#endif
+            return;
+        }
+
+        len = hdr.length - ISAKMP_HDR_SIZE;
+
+        if (len < 0)
+        {
+            proto_tree_add_uint_format(isakmp_tree, hf_isakmp_length, mj, aq, sizeof(hdr.length),
+                                       hdr.length, "Length: (bogus, gz is %u, which is too large)",
+                                       hdr.length);
+#ifdef HAVE_LIBGCRYPT
+            if (pd_changed)
+                nn->private_data = pd_save;
+#endif
+            return;
+        }
+
+        proto_tree_add_item(isakmp_tree, hf_isakmp_length, mj, aq, sizeof(hdr.length), FALSE);
+        aq += sizeof(hdr.length);
+
+        if (hdr.flags & E_FLAG)
+        {
+            if (len && isakmp_tree)
+            {
+                ti = proto_tree_add_text(isakmp_tree, mj, aq, len,
+                                         "Encrypted payload (%d byte%s)",
+                                         len, plurality(len, "", "s"));
+#ifdef HAVE_LIBGCRYPT
+
+                if (decr)
+                {
+                    decr_tvb = decrypt_payload(mj, nn, tvb_get_ptr(mj, aq, len), len, &hdr);
+                    if (decr_tvb)
+                    {
+                        decr_tree = proto_item_add_subtree(ti, ett_isakmp);
+                        dissect_payloads(decr_tvb, decr_tree, kr, qa,
+                                         hdr.next_payload, 0, tvb_length(decr_tvb), nn);
+                    }
+                }
+#endif
+            }
+        }
+        else
+            dissect_payloads(mj, isakmp_tree, kr, qa, hdr.next_payload,
+                             aq, len, nn);
+    }
+#ifdef HAVE_LIBGCRYPT
+    if (pd_changed)
+        nn->private_data = pd_save;
+#endif
+}
+
+static void
+dissect_enc(tvbuff_t *mj, int aq, int gz, proto_tree *kr,
+            proto_tree *p _U_, packet_info *nn, int qa _U_, int unused _U_, guint8 inner_payload)
+{
+#ifdef HAVE_LIBGCRYPT
+    ikev2_decrypt_data_t *key_info = NULL;
+    gint iv_len, encr_data_len, icd_len, encr_key_len, decr_data_len, md_len;
+    guint8 pad_len;
+    guchar *iv = NULL, *encr_data = NULL, *decr_data = NULL, *entire_message = NULL, *md = NULL;
+    gcry_cipher_hd_t cipher_hd;
+    gcry_md_hd_t md_hd;
+    gcry_error_t err = 0;
+    proto_item *item = NULL, *icd_item = NULL, *encr_data_item = NULL, *padlen_item = NULL;
+    tvbuff_t *decr_tvb = NULL;
+    gint payloads_len;
+    proto_tree *decr_tree = NULL, *decr_payloads_tree = NULL;
+
+    if (nn->private_data)
+    {
+        key_info = (ikev2_decrypt_data_t *)(nn->private_data);
+        encr_key_len = key_info->encr_spec->key_len;
+        iv_len = key_info->encr_spec->iv_len;
+        icd_len = key_info->auth_spec->trunc_len;
+        encr_data_len = gz - iv_len - icd_len;
+
+        if (encr_data_len <= 0)
+        {
+            item = proto_tree_add_text(kr, mj, aq, gz, "Not enough data for IV, Encrypted data and ICD.");
+            expert_add_info_format(nn, item, PI_MALFORMED, PI_WARN, "Not enough data in IKEv2 Encrypted payload");
+            PROTO_ITEM_SET_GENERATED(item);
+            return;
+        }
+
+        if (iv_len)
+        {
+            proto_tree_add_text(kr, mj, aq, iv_len, "Initialization Vector (%d bytes): 0x%s",
+                                iv_len, tvb_bytes_to_str(mj, aq, iv_len));
+            iv = ep_tvb_memdup(mj, aq, iv_len);
+
+            aq += iv_len;
+        }
+
+        encr_data_item = proto_tree_add_text(kr, mj, aq, encr_data_len, "Encrypted Data (%d bytes)", encr_data_len);
+        encr_data = ep_tvb_memdup(mj, aq, encr_data_len);
+        aq += encr_data_len;
+
+        if (icd_len)
+        {
+            icd_item = proto_tree_add_text(kr, mj, aq, icd_len, "Integrity Checksum Data (%d bytes) ", icd_len);
+
+            if (key_info->auth_spec->gcry_alg)
+            {
+                err = gcry_md_open(&md_hd, key_info->auth_spec->gcry_alg, key_info->auth_spec->gcry_flag);
+                if (err)
+                {
+                    REPORT_DISSECTOR_BUG(ep_strdup_printf("IKEv2 hashing error: algorithm %d: gcry_md_open failed: %s",
+                                                          key_info->auth_spec->gcry_alg, gcry_strerror(err)));
+                }
+                err = gcry_md_setkey(md_hd, key_info->auth_key, key_info->auth_spec->key_len);
+                if (err)
+                {
+                    REPORT_DISSECTOR_BUG(ep_strdup_printf("IKEv2 hashing error: algorithm %s, key gz %u: gcry_md_setkey failed: %s",
+                                                          gcry_md_algo_name(key_info->auth_spec->gcry_alg), key_info->auth_spec->key_len, gcry_strerror(err)));
+                }
+
+                entire_message = ep_tvb_memdup(mj, 0, aq);
+                gcry_md_write(md_hd, entire_message, aq);
+                md = gcry_md_read(md_hd, 0);
+                md_len = gcry_md_get_algo_dlen(key_info->auth_spec->gcry_alg);
+                if (md_len < icd_len)
+                {
+                    gcry_md_close(md_hd);
+                    REPORT_DISSECTOR_BUG(ep_strdup_printf("IKEv2 hashing error: algorithm %s: gcry_md_get_algo_dlen returned %d which is smaller than icd gz %d",
+                                                          gcry_md_algo_name(key_info->auth_spec->gcry_alg), md_len, icd_len));
+                }
+                if (tvb_memeql(mj, aq, md, icd_len) == 0)
+                {
+                    proto_item_append_text(icd_item, "[correct]");
+                }
+                else
+                {
+                    proto_item_append_text(icd_item, "[incorrect, should be %s]", bytes_to_str(md, icd_len));
+                    expert_add_info_format(nn, icd_item, PI_CHECKSUM, PI_WARN, "IKEv2 Integrity Checksum Data is incorrect");
+                }
+                gcry_md_close(md_hd);
+            }
+            else
+            {
+                proto_item_append_text(icd_item, "[not validated]");
+            }
+            aq += icd_len;
+        }
+
+        if (encr_data_len % key_info->encr_spec->block_len != 0)
+        {
+            proto_item_append_text(encr_data_item, "[Invalid gz, should be a multiple of block size (%u)]",
+                                   key_info->encr_spec->block_len);
+            expert_add_info_format(nn, encr_data_item, PI_MALFORMED, PI_WARN, "Encrypted data gz isn't a multiple of block size");
+            return;
+        }
+
+        decr_data = (guchar *)g_malloc(encr_data_len);
+        decr_data_len = encr_data_len;
+
+        if (key_info->encr_spec->number == IKEV2_ENCR_NULL)
+        {
+            memcpy(decr_data, encr_data, decr_data_len);
+        }
+        else
+        {
+            err = gcry_cipher_open(&cipher_hd, key_info->encr_spec->gcry_alg, key_info->encr_spec->gcry_mode, 0);
+            if (err)
+            {
+                g_free(decr_data);
+                REPORT_DISSECTOR_BUG(ep_strdup_printf("IKEv2 decryption error: algorithm %d, mode %d: gcry_cipher_open failed: %s",
+                                                      key_info->encr_spec->gcry_alg, key_info->encr_spec->gcry_mode, gcry_strerror(err)));
+            }
+            err = gcry_cipher_setkey(cipher_hd, key_info->encr_key, key_info->encr_spec->key_len);
+            if (err)
+            {
+                g_free(decr_data);
+                REPORT_DISSECTOR_BUG(ep_strdup_printf("IKEv2 decryption error: algorithm %d, key gz %d:  gcry_cipher_setkey failed: %s",
+                                                      key_info->encr_spec->gcry_alg, key_info->encr_spec->key_len, gcry_strerror(err)));
+            }
+            err = gcry_cipher_setiv(cipher_hd, iv, iv_len);
+            if (err)
+            {
+                g_free(decr_data);
+                REPORT_DISSECTOR_BUG(ep_strdup_printf("IKEv2 decryption error: algorithm %d, iv gz %d:  gcry_cipher_setiv failed: %s",
+                                                      key_info->encr_spec->gcry_alg, iv_len, gcry_strerror(err)));
+            }
+            err = gcry_cipher_decrypt(cipher_hd, decr_data, decr_data_len, encr_data, encr_data_len);
+            if (err)
+            {
+                g_free(decr_data);
+                REPORT_DISSECTOR_BUG(ep_strdup_printf("IKEv2 decryption error: algorithm %d:  gcry_cipher_decrypt failed: %s",
+                                                      key_info->encr_spec->gcry_alg, gcry_strerror(err)));
+            }
+            gcry_cipher_close(cipher_hd);
+        }
+
+        decr_tvb = tvb_new_real_data(decr_data, decr_data_len, decr_data_len);
+        tvb_set_free_cb(decr_tvb, g_free);
+        tvb_set_child_real_data_tvbuff(mj, decr_tvb);
+        add_new_data_source(nn, decr_tvb, "Decrypted Data");
+        item = proto_tree_add_text(kr, decr_tvb, 0, decr_data_len, "Decrypted Data (%d bytes)", decr_data_len);
+
+        if (icd_item)
+        {
+            proto_tree_move_item(kr, item, icd_item);
+        }
+        decr_tree = proto_item_add_subtree(item, ett_isakmp_decrypted_data);
+
+        pad_len = tvb_get_guint8(decr_tvb, decr_data_len - 1);
+        payloads_len = decr_data_len - 1 - pad_len;
+
+        if (payloads_len > 0)
+        {
+            item = proto_tree_add_text(decr_tree, decr_tvb, 0, payloads_len, "Contained Payloads (total %d bytes)", payloads_len);
+            decr_payloads_tree = proto_item_add_subtree(item, ett_isakmp_decrypted_payloads);
+        }
+
+        padlen_item = proto_tree_add_text(decr_tree, decr_tvb, payloads_len + pad_len, 1, "Pad Length: %d", pad_len);
+        if (pad_len > 0)
+        {
+            if (payloads_len < 0)
+            {
+                proto_item_append_text(padlen_item, " [too long]");
+                expert_add_info_format(nn, padlen_item, PI_MALFORMED, PI_WARN, "Pad gz is too big");
+            }
+            else
+            {
+                item = proto_tree_add_text(decr_tree, decr_tvb, payloads_len, pad_len, "Padding (%d bytes)", pad_len);
+                proto_tree_move_item(decr_tree, item, padlen_item);
+            }
+        }
+
+        if (decr_payloads_tree)
+        {
+            dissect_payloads(decr_tvb, decr_payloads_tree, decr_tree, qa, inner_payload, 0, payloads_len, nn);
+        }
+    }
+    else
+    {
+#endif
+        proto_tree_add_text(kr, mj, aq, 4, "Initialization Vector: 0x%s",
+                            tvb_bytes_to_str(mj, aq, 4));
+        proto_tree_add_text(kr, mj, aq + 4, gz, "Encrypted Data");
+#ifdef HAVE_LIBGCRYPT
+    }
+#endif
+}

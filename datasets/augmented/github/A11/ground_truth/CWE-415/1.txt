@@ -1,0 +1,2 @@
+FFmpeg n7.0 is affected by a Double Free via the rkmpp_retrieve_frame 
+function within libavcodec/rkmppdec.c.

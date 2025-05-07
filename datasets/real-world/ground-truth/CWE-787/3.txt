@@ -1,0 +1,8 @@
+concat built-in can write over the bounds of the memory buffer that 
+was allocated for it and thus overwrite existing valid data. The root cause 
+is that the build_IR for concat doesn't properly adhere to the API of 
+copy functions (for >=0.3.2 the copy_bytes function).
+
+A contract search was performed and no vulnerable contracts were 
+found in production.
+

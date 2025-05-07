@@ -1,0 +1,2 @@
+An unsafe decompression vulnerability allows unauthenticated attackers 
+to crash the collector via excessive memory consumption.

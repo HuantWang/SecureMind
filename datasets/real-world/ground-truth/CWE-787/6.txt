@@ -1,0 +1,7 @@
+There is a bug in Wasmtime's C API implementation where the definition 
+of the wasmtime_trap_code does not match its declared signature in the 
+wasmtime/trap.h header file. This discrepancy causes the function implementation 
+to perform a 4-byte write into a 1-byte buffer provided by the caller. 
+This can lead to three zero bytes being written 
+beyond the 1-byte location provided by the caller.
+

@@ -1,0 +1,7 @@
+Out-of-bounds Read vulnerability in Apache NimBLE.
+
+Missing proper validation of HCI advertising report could lead to out-of-bound access when parsing HCI event and thus bogus GAP 'device found' events being sent.
+This issue requires broken or bogus Bluetooth controller and thus severity is considered low.
+This issue affects Apache NimBLE: through 1.7.0.
+
+Users are recommended to upgrade to version 1.8.0, which fixes the issue.

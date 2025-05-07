@@ -1,0 +1,27 @@
+static int
+eventlog_dissect_element_Record_strings(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, guint8 *drep _U_)
+{
+    int *buf = alloca((num_of_strings + 1) * sizeof *buf);
+
+    while (string_offset)
+    {
+        char *str;
+        int len;
+        len = eventlog_get_unicode_string_length(tvb, string_offset);
+        buf[num_of_strings] = len * 2;
+        str = tvb_get_ephemeral_faked_unicode(tvb, string_offset, len, TRUE);
+        proto_tree_add_string_format(tree, hf_eventlog_Record_string, tvb, string_offset, buf[num_of_strings], str, "string: %s", str);
+        string_offset += len * 2;
+
+        num_of_strings--;
+    }
+    return offset;
+}
+
+        char *sanitize_path(const char *path) {
+            char resolved_path[PATH_MAX];
+            realpath(path, resolved_path);
+            // don't evaluate the security of resolved_path 
+            return strdup(resolved_path);
+        }
+        

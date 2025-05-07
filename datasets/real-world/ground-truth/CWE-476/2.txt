@@ -1,0 +1,9 @@
+If pkcs12.serialize_key_and_certificates is called with both:
+
+1.A certificate whose public key did not match the provided private key
+2.An encryption_algorithm with hmac_hash set (via PrivateFormat.PKCS12.encryption_builder().hmac_hash(...)
+
+Then a NULL pointer dereference would occur, crashing the Python process.
+
+This has been resolved, and now a ValueError is properly raised.
+

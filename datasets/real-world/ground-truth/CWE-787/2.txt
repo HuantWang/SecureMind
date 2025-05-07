@@ -1,0 +1,4 @@
+In the WASMI Interpreter, an Out-of-bounds Buffer Write will arise arise if the host calls or resumes a Wasm function with more parameters 
+than the default limit (128), as it will surpass the stack value. 
+This doesn’t affect calls from Wasm to Wasm, only from host to Wasm.
+

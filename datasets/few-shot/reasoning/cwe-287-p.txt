@@ -1,0 +1,1 @@
+This patch enhances authentication security by implementing SHA-256 password hashing instead of relying on plaintext password storage. It ensures proper input validation and secure string comparisons to prevent authentication bypass.

@@ -1,0 +1,3 @@
+All decompressor implementations of Aircompressor (LZ4, LZO, Snappy, Zstandard) can crash the JVM for certain input, 
+and in some cases also leak the content of other memory of the Java process (which could contain sensitive information).
+

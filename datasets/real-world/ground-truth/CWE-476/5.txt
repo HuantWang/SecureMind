@@ -1,0 +1,2 @@
+A flaw was found in kube-controller-manager. This issue occurs when the initial application of a HPA config YAML 
+lacking a .spec.behavior.scaleUp block causes a denial of service due to KCM pods going into restart churn.

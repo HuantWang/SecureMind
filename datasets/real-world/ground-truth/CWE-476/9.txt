@@ -1,0 +1,3 @@
+Calling jws.Parse with a JSON serialized payload where the signature field 
+is present while protected is absent can lead to a nil pointer dereference.
+

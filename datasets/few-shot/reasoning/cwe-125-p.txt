@@ -1,0 +1,1 @@
+Ensures `scanf` properly reads an integer. If the input is invalid (non-integer), the program errors out gracefully. Bounds-checking logic ensures the index is between `0` and `4` inclusively, rejecting invalid indices. This prevents accessing memory outside the array bounds.

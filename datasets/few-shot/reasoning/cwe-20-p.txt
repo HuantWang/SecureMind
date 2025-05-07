@@ -1,0 +1,1 @@
+The original code allowed invalid input, such as non-numeric characters, negative values, or excessively large numbers, leading to improper behavior. By implementing strict input validation, the patch ensures that only valid numerical values are processed. It prevents unintended behavior caused by incorrect user input, making the program more robust and secure.

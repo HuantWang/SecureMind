@@ -1,0 +1,4 @@
+A heap-use-after-free flaw was found in ImageSharp's InitializeImage() 
+function of PngDecoderCore.cs file. This vulnerability is triggered when an
+attacker passes a specially crafted PNG image file to ImageSharp for conversion, 
+potentially leading to information disclosure.

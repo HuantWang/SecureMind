@@ -1,0 +1,2 @@
+A request with a number of headers exceeding theserver.maxHeadersCount threshold could be used to crash a ws server.
+

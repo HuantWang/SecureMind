@@ -1,0 +1,1 @@
+After freeing the memory, the pointer is set to `NULL`. Dereferencing a null pointer causes a detectable error, which is preferable to undefined behavior. By checking if the pointer is `NULL`, the program avoids unintended memory access or invalid operations.

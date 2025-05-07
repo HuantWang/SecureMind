@@ -1,0 +1,17 @@
+Overview:
+The program dynamically allocates memory, assigns a value, and frees it once. It avoids freeing the memory again by nullifying the pointer and adding safety checks.
+
+Sub-components:
+S1: Pointer Allocation & Initialization -> allocates memory and checks whether it is successfully allocated.
+S2: First Free Operation -> safely frees the allocated memory and sets the pointer to NULL.
+S3: Second Free Operation -> ensures the pointer is not double-freed by checking its value.
+
+Analysis:
+A-S1: The memory is allocated using `malloc`, and the pointer is initialized correctly. If memory allocation fails, the program gracefully exits.
+A-S2: When the memory is freed, the pointer is set to NULL. This ensures that the pointer no longer references already-freed memory, preventing unintentional double free.
+A-S3: Before attempting a second `free` operation, the pointer value is checked. If it is NULL, the second free is skipped, and a user-friendly message is printed to inform the user.
+
+Decision:
+Based on A-S1, the memory is correctly allocated and initialized without issues.
+Based on A-S2, the pointer is set to NULL after freeing the memory, preventing double free vulnerabilities.
+Based on A-S3, the program safely avoids a double free by checking if the pointer is NULL before attempting to release the memory.

@@ -1,0 +1,2 @@
+moby v25.0.0 - v26.0.2 is vulnerable to NULL Pointer Dereference via daemon/images/image_history.go.
+

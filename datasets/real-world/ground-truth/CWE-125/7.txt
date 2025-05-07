@@ -1,0 +1,5 @@
+Versions of the package spatie/browsershot before 5.0.3 are vulnerable 
+to Improper Input Validation due to improper URL validation through the 
+setUrl method. An attacker can exploit this vulnerability 
+by utilizing view-source:file://, which allows for arbitrary file reading on a 
+local file.

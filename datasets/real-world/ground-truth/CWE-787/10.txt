@@ -1,0 +1,4 @@
+An Out-of-bounds Write vulnerability has been found in the ImageSharp
+gif decoder, allowing attackers to cause a crash using a specially crafted 
+gif. This can potentially lead to denial of service.
+

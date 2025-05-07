@@ -1,0 +1,1 @@
+After freeing the memory with `free(ptr)`, the pointer is set to `NULL` to ensure it doesn't point to the already-freed memory. Before attempting to free the memory a second time, the program checks if the pointer is null (`ptr != NULL`). Clearly informs the user that double free is being avoided by skipping the second free attempt.

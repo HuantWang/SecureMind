@@ -1,0 +1,6 @@
+At ospd_common.c, on the osdp_reply_name function, any reply id between 
+REPLY_ACK and REPLY_XRD is valid, but names array do not declare all of 
+the range. On a case of an undefined reply id within the range, name will 
+be null (name = names[reply_id - REPLY_ACK];). Null name will casue a crash 
+on next line: if (name[0] == '\0') as null[0] is invalid.
+

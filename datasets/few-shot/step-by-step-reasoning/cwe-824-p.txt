@@ -1,0 +1,17 @@
+Overview:
+The fixed program allocates memory dynamically on the heap and safely returns a pointer to that memory, ensuring it is still valid to access after the function returns.
+
+Sub-components:
+S1: Function Declaration -> allocates memory dynamically instead of using a local variable, ensuring the memory remains valid.
+S2: Pointer Return & Access -> returns a valid memory address and ensures null checking before dereferencing the pointer.
+S3: Memory Management -> ensures the dynamically allocated memory is freed after use to avoid memory leaks.
+
+Analysis:
+A-S1: The `create_and_return_pointer_fixed` function dynamically allocates memory using `malloc`. This ensures that the allocated memory is valid beyond the function's scope.
+A-S2: Before accessing the memory, the program ensures that the pointer is not null, preventing dereferencing invalid memory.
+A-S3: After the memory is used, it is explicitly freed using `free(ptr)`. This ensures there is no memory leak in the program.
+
+Decision:
+Based on A-S1, the code avoids invalid memory access by dynamically allocating the required memory.
+Based on A-S2, the program safely dereferences the pointer only after validating it.
+Based on A-S3, the program properly frees the allocated memory, ensuring no resource leaks.

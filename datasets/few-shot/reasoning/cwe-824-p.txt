@@ -1,0 +1,1 @@
+Switched from returning a local variable (stack-allocated) to dynamically allocating memory on the heap, as heap memory remains valid until explicitly freed. Added a check for `NULL` to ensure the memory allocation was successful before accessing the pointer. Added `free(ptr)` to prevent memory leaks after the pointer is no longer needed.

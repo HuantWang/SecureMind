@@ -1,0 +1,3 @@
+The code demonstrates a scenario leading to **CWE-825: Expired Pointer Dereference**. After freeing the dynamically allocated memory using `free(ptr)`, the code attempts to dereference the same pointer. This results in undefined behavior because the memory being referenced is no longer valid. This can lead to crashes, unpredictable behavior, or security issues.
+
+A common mitigation is to immediately set the pointer to `NULL` after freeing it to avoid referencing expired memory.

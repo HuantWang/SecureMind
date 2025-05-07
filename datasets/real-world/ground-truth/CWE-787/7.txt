@@ -1,0 +1,7 @@
+This Out-of-bounds Write vulnerability in Apache Commons 
+Configuration affects Apache Commons Configuration: from 2.0 before 
+2.10.1. User can see this as a 'StackOverflowError' calling 
+'ListDelimiterHandler.flatten(Object, int)' with a cyclical object tree.
+Users are recommended to upgrade to version 2.10.1, which fixes the 
+issue.
+

@@ -1,0 +1,7 @@
+Unchecked Return Value, Out-of-bounds Read vulnerability in FFmpeg allows Read Sensitive Constants Within an Executable. This vulnerability is associated with program files https://github.Com/FFmpeg/FFmpeg/blob/master/libavfilter/af_pan.C .
+
+This issue affects FFmpeg: 7.1.
+
+Issue was fixed:  FFmpeg/FFmpeg@b5b6391
+
+FFmpeg/FFmpeg@b5b6391 This issue was discovered by: Simcha Kosman

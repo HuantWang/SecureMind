@@ -1,0 +1,14 @@
+The implementation of the following functions were determined to include a use-after-free bug:
+
+FetchEvent.client.tlsCipherOpensslName
+FetchEvent.client.tlsProtocol
+FetchEvent.client.tlsClientCertificate
+FetchEvent.client.tlsJA3MD5
+FetchEvent.client.tlsClientHello
+CacheEntry.prototype.userMetadata of the fastly:cache subsystem
+Device.lookup of the fastly:device subsystem
+
+This bug could allow for an unintended data leak 
+if the result of the preceding functions were sent anywhere else, 
+and often results in a Compute service crash causing an HTTP 500 error to be returned. 
+As all requests to Compute are isolated from one another, the only data at risk is data present for a single request.

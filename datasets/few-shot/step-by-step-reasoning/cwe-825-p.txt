@@ -1,0 +1,17 @@
+Overview:
+The program dynamically allocates memory, assigns a value, and frees it. It ensures the pointer is not dereferenced after being freed to avoid undefined behavior.
+
+Sub-components:
+S1: Dynamic Memory Allocation -> allocates memory for an integer and checks if allocation is successful.
+S2: Memory Freeing -> releases the memory using `free` and sets the pointer to NULL.
+S3: Pointer Dereference Avoidance -> checks if the pointer is NULL before attempting to use it.
+
+Analysis:
+A-S1: The program allocates memory using `malloc` to store an integer and assigns a value. If the allocation fails, it reports an error and exits the function gracefully.
+A-S2: After `free(ptr)`, the pointer is set to NULL. This nullification ensures the pointer no longer references released memory, avoiding undefined behavior if dereferenced.
+A-S3: The program checks if `ptr` is NULL before attempting to dereference it. If `ptr` is NULL, it skips the dereference and informs the user that the pointer is invalid.
+
+Decision:
+Based on A-S1, the program safely allocates memory for pointer operations.
+Based on A-S2, the program avoids invalid memory access by nullifying the pointer after freeing it.
+Based on A-S3, the program ensures the freed pointer is not dereferenced, avoiding undefined behavior.

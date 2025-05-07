@@ -1,0 +1,13 @@
+Overview:
+The code addresses the vulnerability by ensuring that dynamically allocated memory is properly managed. After deallocating the memory, the pointer is set to `nullptr` to prevent invalid operations.
+
+Sub-components:
+S1: The code sets the pointer to `nullptr` immediately after the memory is released.
+S2: Before calling `delete`, the pointer is checked to ensure it is not already `nullptr`, preventing double deletion.
+
+Analysis:
+A-S1: Assigning `nullptr` to the pointer after deletion ensures that subsequent deletion attempts will safely do nothing (as deleting a `nullptr` is harmless).
+A-S2: Checking the pointer’s validity before deletion prevents access to a potentially dangling pointer, thereby avoiding undefined behavior.
+
+Decision:
+Based on A-S1 and A-S2, setting the pointer to `nullptr` after deletion and validating its state before subsequent operations effectively resolves the vulnerability associated with the release of invalid pointers.

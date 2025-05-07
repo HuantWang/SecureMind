@@ -1,0 +1,5 @@
+An attacker can exploit a critical flaw in the application to initiate a 
+Denial of Service (DoS) attack, rendering the application inoperable and 
+affecting all users. The issue arises from unsafe manipulation of an array 
+in a multi-threaded environment.
+
